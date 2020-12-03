@@ -32,6 +32,15 @@ class BillingService(
         logger.info { "Failed processing ${failed.size} invoices" }
     }
 
+    fun processInvoice(invoiceId: Int): InvoicePayment {
+        val invoice = invoiceService.fetch(invoiceId)
+
+        if (invoice.status == InvoiceStatus.PENDING) {
+            return processInvoice(invoice)
+        }
+        throw InvoiceNotPendingException(invoice.id)
+
+    }
 
     private fun processInvoice(invoice: Invoice): InvoicePayment {
         logger.info { "Processing invoice '${invoice.id}'" }

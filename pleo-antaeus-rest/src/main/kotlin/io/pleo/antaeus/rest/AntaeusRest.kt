@@ -5,9 +5,10 @@
 package io.pleo.antaeus.rest
 
 import io.javalin.Javalin
-import io.javalin.apibuilder.ApiBuilder.get
-import io.javalin.apibuilder.ApiBuilder.path
+import io.javalin.apibuilder.ApiBuilder.*
 import io.pleo.antaeus.core.exceptions.EntityNotFoundException
+import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
+import io.pleo.antaeus.core.services.BillingService
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
 import mu.KotlinLogging
@@ -17,7 +18,8 @@ private val thisFile: () -> Unit = {}
 
 class AntaeusRest(
     private val invoiceService: InvoiceService,
-    private val customerService: CustomerService
+    private val customerService: CustomerService,
+    private val billingService: BillingService
 ) : Runnable {
 
     override fun run() {
@@ -38,6 +40,10 @@ class AntaeusRest(
             }
             // On 404: return message
             error(404) { ctx -> ctx.json("not found") }
+            exception(InvoiceNotPendingException::class.java) { e, ctx ->
+                ctx.status(409)
+                e.message?.let { ctx.json(it) }
+            }
         }
 
     init {
@@ -61,9 +67,22 @@ class AntaeusRest(
                             it.json(invoiceService.fetchAll())
                         }
 
-                        // URL: /rest/v1/invoices/{:id}
-                        get(":id") {
-                            it.json(invoiceService.fetch(it.pathParam("id").toInt()))
+                        // URL: /rest/v1/invoices/process
+                        put("process") {
+                            it.json(billingService.processInvoices())
+                        }
+
+                        path(":id") {
+                            // URL: /rest/v1/invoices/{:id}
+                            get() {
+                                it.json(invoiceService.fetch(it.pathParam("id").toInt()))
+                            }
+
+                            // URL: /rest/v1/invoices/{:id}/process
+                            // can be used to manually trigger processing of the invoice
+                            path("process") {
+                                put() { it.json(billingService.processInvoice(it.pathParam("id").toInt())) }
+                            }
                         }
                     }
 
