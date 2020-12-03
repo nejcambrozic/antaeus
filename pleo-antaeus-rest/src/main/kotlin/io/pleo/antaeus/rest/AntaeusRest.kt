@@ -67,11 +67,6 @@ class AntaeusRest(
                             it.json(invoiceService.fetchAll())
                         }
 
-                        // URL: /rest/v1/invoices/process
-                        put("process") {
-                            it.json(billingService.processInvoices())
-                        }
-
                         path(":id") {
                             // URL: /rest/v1/invoices/{:id}
                             get() {

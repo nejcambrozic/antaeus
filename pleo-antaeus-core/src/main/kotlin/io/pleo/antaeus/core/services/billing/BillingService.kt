@@ -5,20 +5,32 @@ import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
 import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
+import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.core.services.billing.InvoicePayment
 import io.pleo.antaeus.core.services.billing.PaymentResult
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import mu.KotlinLogging
+import java.time.LocalDateTime
 
 private val logger = KotlinLogging.logger {}
 
 
 class BillingService(
     private val paymentProvider: PaymentProvider,
-    private val invoiceService: InvoiceService
+    private val invoiceService: InvoiceService,
+    private val scheduler: Scheduler
 ) {
-    fun processInvoices() {
+
+    fun startAutomaticBilling() {
+        val now = LocalDateTime.now()
+        // Schedule for next minute for testing purposes
+        // TODO: schedule for 1st of month
+        val scheduledAt = LocalDateTime.of(now.year, now.month, now.dayOfMonth, now.hour, now.minute + 1)
+        scheduler.scheduleJob(processInvoices, scheduledAt)
+    }
+
+    private val processInvoices:() -> Unit = {
         logger.info { "Starting to process invoices..." }
         val start = System.currentTimeMillis()
 
