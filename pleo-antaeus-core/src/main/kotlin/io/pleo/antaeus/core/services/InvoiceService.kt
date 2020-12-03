@@ -22,15 +22,15 @@ class InvoiceService(private val dal: AntaeusDal) {
         return dal.fetchInvoices(status)
     }
 
-    fun markProcessing(id: Int): Invoice? {
-        return dal.setInvoiceStatus(id, InvoiceStatus.PROCESSING)
+    fun markProcessing(id: Int): Invoice {
+        return dal.setInvoiceStatus(id, InvoiceStatus.PROCESSING) ?: throw InvoiceNotFoundException(id)
     }
 
-    fun markPaid(id: Int): Invoice? {
-        return dal.setInvoiceStatus(id, InvoiceStatus.PAID)
+    fun markPaid(id: Int): Invoice {
+        return dal.setInvoiceStatus(id, InvoiceStatus.PAID) ?: throw InvoiceNotFoundException(id)
     }
 
-    fun markFailed(id: Int): Invoice? {
-        return dal.setInvoiceStatus(id, InvoiceStatus.FAILED)
+    fun markFailed(id: Int): Invoice {
+        return dal.setInvoiceStatus(id, InvoiceStatus.FAILED) ?: throw InvoiceNotFoundException(id)
     }
 }
