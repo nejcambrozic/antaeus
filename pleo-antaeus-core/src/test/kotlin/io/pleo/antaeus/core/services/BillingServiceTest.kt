@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
 import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
@@ -108,6 +109,23 @@ class BillingServiceTest {
     @Test
     fun `will return failed invoice payment on network error`() {
         every { paymentProvider.charge(any()) } throws NetworkException()
+        val invoicePayment = billingService.processInvoice(INVOICE_PENDING)
+
+        Assertions.assertFalse(invoicePayment.charged)
+        Assertions.assertEquals(InvoiceStatus.FAILED, invoicePayment.invoice.status)
+    }
+
+    @Test
+    fun `will not retry processing invoice if customer not found`() {
+        every { paymentProvider.charge(any()) } throws CustomerNotFoundException(2)
+        billingService.processInvoice(INVOICE_PENDING)
+
+        verify(exactly = 1) { paymentProvider.charge(any()) }
+    }
+
+    @Test
+    fun `will return failed invoice payment when customer not found`() {
+        every { paymentProvider.charge(any()) } throws CustomerNotFoundException(2)
         val invoicePayment = billingService.processInvoice(INVOICE_PENDING)
 
         Assertions.assertFalse(invoicePayment.charged)

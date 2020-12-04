@@ -66,7 +66,7 @@ class BillingService(
             InvoicePaymentAction(processedInvoice, processedInvoice.status == InvoiceStatus.PAID)
 
         } catch (cnfe: CustomerNotFoundException) {
-            TODO()
+            InvoicePaymentAction(invoiceService.markFailed(invoice.id), false)
         } catch (cme: CurrencyMismatchException) {
             TODO()
         } catch (ne: NetworkException) {
