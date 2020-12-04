@@ -4,6 +4,7 @@ import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
 import io.pleo.antaeus.core.exceptions.NetworkException
+import io.pleo.antaeus.core.external.CurrencyProvider
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.core.services.billing.InvoicePaymentAction
@@ -20,7 +21,9 @@ private val logger = KotlinLogging.logger {}
 
 class BillingService(
     private val paymentProvider: PaymentProvider,
+    private val currencyProvider: CurrencyProvider,
     private val invoiceService: InvoiceService,
+    private val customerService: CustomerService,
     private val scheduler: Scheduler
 ) {
 
@@ -68,9 +71,10 @@ class BillingService(
         } catch (cnfe: CustomerNotFoundException) {
             InvoicePaymentAction(invoiceService.markFailed(invoice.id), false)
         } catch (cme: CurrencyMismatchException) {
-            TODO()
+            processInvoice(convertInvoiceCurrency(invoice), attempt + 1)
+
         } catch (ne: NetworkException) {
-            logger.warn(ne) { "Network error while processing invoice '${invoice.id}'"}
+            logger.warn(ne) { "Network error while processing invoice '${invoice.id}'" }
             runBlocking {
                 retryPaymentAttempt(invoice, attempt)
             }
@@ -93,6 +97,27 @@ class BillingService(
         }
         logger.info { "Charge failed for invoice: '${invoice.id}'" }
         return invoiceService.markFailed(invoice.id)
+    }
+
+    private fun convertInvoiceCurrency(invoice: Invoice, attempt: Int = 0): Invoice {
+        if (attempt >= processInvoiceRetryCount) {
+            return invoice
+        }
+
+        return try {
+            val customer = customerService.fetch(invoice.customerId)
+            val convertedAmount = currencyProvider.convert(invoice.amount, customer.currency)
+            invoice.copy(amount = convertedAmount)
+        } catch (ne: NetworkException) {
+            runBlocking {
+                retryCurrencyConvert(invoice, attempt)
+            }
+        }
+    }
+
+    private suspend fun retryCurrencyConvert(invoice: Invoice, attempt: Int = 0): Invoice {
+        delay(Random.nextLong(1000, 2000))
+        return convertInvoiceCurrency(invoice, attempt + 1)
     }
 
     private suspend fun retryPaymentAttempt(invoice: Invoice, attempt: Int = 0): InvoicePaymentAction {

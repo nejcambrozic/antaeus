@@ -4,9 +4,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
 import io.pleo.antaeus.core.exceptions.NetworkException
+import io.pleo.antaeus.core.external.CurrencyProvider
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.models.*
@@ -15,28 +17,52 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 
+private val CUSTOMER_EUR = Customer(1, Currency.EUR)
+private val CUSTOMER_DKK = Customer(2, Currency.DKK)
 
 private val MONEY_EUR = Money(BigDecimal(100), Currency.EUR)
+private val MONEY_DKK = Money(BigDecimal(1000), Currency.DKK)
 
-private val INVOICE_PENDING = Invoice(1, 1, MONEY_EUR, InvoiceStatus.PENDING)
-private val INVOICE_PROCESSING = Invoice(1, 1, MONEY_EUR, InvoiceStatus.PROCESSING)
-private val INVOICE_PAID = Invoice(1, 1, MONEY_EUR, InvoiceStatus.PAID)
-private val INVOICE_FAILED = Invoice(1, 1, MONEY_EUR, InvoiceStatus.FAILED)
+private val INVOICE_PENDING = Invoice(1, CUSTOMER_EUR.id, MONEY_EUR, InvoiceStatus.PENDING)
+private val INVOICE_PROCESSING = Invoice(1, CUSTOMER_EUR.id, MONEY_EUR, InvoiceStatus.PROCESSING)
+private val INVOICE_PAID = Invoice(1, CUSTOMER_EUR.id, MONEY_EUR, InvoiceStatus.PAID)
+private val INVOICE_FAILED = Invoice(1, CUSTOMER_EUR.id, MONEY_EUR, InvoiceStatus.FAILED)
+private val INVOICE_CURRENCY_MISMATCH = Invoice(2, CUSTOMER_EUR.id, MONEY_DKK, InvoiceStatus.PENDING)
 
 class BillingServiceTest {
 
 
-    private val paymentProvider = mockk<PaymentProvider>() {
+    private val paymentProvider = mockk<PaymentProvider> {
         every { charge(INVOICE_PENDING) } returns true
         every { charge(INVOICE_PROCESSING) } returns true
         every { charge(INVOICE_PAID) } returns true
         every { charge(INVOICE_FAILED) } returns false
+        every { charge(INVOICE_CURRENCY_MISMATCH) } throws CurrencyMismatchException(
+            INVOICE_CURRENCY_MISMATCH.id,
+            INVOICE_CURRENCY_MISMATCH.customerId
+        )
+        // state of currency mismatch invoice after converting currency
+        every { charge(INVOICE_CURRENCY_MISMATCH.copy(amount = MONEY_EUR)) } returns true
     }
 
-    private val invoiceService = mockk<InvoiceService>() {
+    private val currencyProvider = mockk<CurrencyProvider> {
+        every { convert(any(), Currency.DKK) } returns MONEY_DKK
+        every { convert(any(), Currency.EUR) } returns MONEY_EUR
+    }
+
+    private val invoiceService = mockk<InvoiceService> {
         every { markProcessing(INVOICE_PENDING.id) } returns INVOICE_PROCESSING
         every { markPaid(INVOICE_PROCESSING.id) } returns INVOICE_PAID
         every { markFailed(INVOICE_PROCESSING.id) } returns INVOICE_FAILED
+        // duplicated mock functions for currency mismatch invoice
+        every { markProcessing(INVOICE_CURRENCY_MISMATCH.id) } returns INVOICE_CURRENCY_MISMATCH
+        every { markFailed(INVOICE_CURRENCY_MISMATCH.id) } returns INVOICE_CURRENCY_MISMATCH.copy(status = InvoiceStatus.FAILED)
+        every { markPaid(INVOICE_CURRENCY_MISMATCH.id) } returns INVOICE_CURRENCY_MISMATCH.copy(status = InvoiceStatus.PAID)
+    }
+
+    private val customerService = mockk<CustomerService> {
+        every { fetch(1) } returns CUSTOMER_EUR
+        every { fetch(2) } returns CUSTOMER_DKK
     }
 
     private val scheduler = mockk<Scheduler> { }
@@ -44,7 +70,9 @@ class BillingServiceTest {
 
     private val billingService = BillingService(
         paymentProvider = paymentProvider,
+        currencyProvider = currencyProvider,
         invoiceService = invoiceService,
+        customerService = customerService,
         scheduler = scheduler
     )
 
@@ -131,4 +159,53 @@ class BillingServiceTest {
         Assertions.assertFalse(invoicePayment.charged)
         Assertions.assertEquals(InvoiceStatus.FAILED, invoicePayment.invoice.status)
     }
+
+    @Test
+    fun `will attempt to charge, convert currency and retry charge`() {
+        billingService.processInvoice(INVOICE_CURRENCY_MISMATCH)
+
+        verifyOrder {
+            paymentProvider.charge(INVOICE_CURRENCY_MISMATCH)
+            currencyProvider.convert(INVOICE_CURRENCY_MISMATCH.amount, CUSTOMER_EUR.currency)
+        }
+        paymentProvider.charge(INVOICE_CURRENCY_MISMATCH.copy(amount = MONEY_EUR))
+    }
+
+    @Test
+    fun `will fail to process invoice if can't convert currency`() {
+        every { currencyProvider.convert(any(), any()) } throws NetworkException()
+
+        val invoicePayment = billingService.processInvoice(INVOICE_CURRENCY_MISMATCH)
+
+        Assertions.assertFalse(invoicePayment.charged)
+        Assertions.assertEquals(InvoiceStatus.FAILED, invoicePayment.invoice.status)
+    }
+
+    @Test
+    fun `will retry converting currency processInvoiceRetryCount**2 times before quiting on network error`() {
+        every { currencyProvider.convert(any(), any()) } throws NetworkException()
+        billingService.processInvoice(INVOICE_CURRENCY_MISMATCH)
+
+        val totalExpectedConvertCalls =
+            billingService.processInvoiceRetryCount * billingService.processInvoiceRetryCount
+        verify(exactly = billingService.processInvoiceRetryCount) { paymentProvider.charge(any()) }
+        verify(exactly = totalExpectedConvertCalls) { currencyProvider.convert(any(), any()) }
+        // Each top-level invoiceProcessing attempt includes the same amount of convertCurrency attempts for each
+        verifyOrder {
+            paymentProvider.charge(any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+            paymentProvider.charge(any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+            paymentProvider.charge(any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+            currencyProvider.convert(any(), any())
+        }
+    }
+
+
 }

@@ -7,6 +7,7 @@
 
 package io.pleo.antaeus.app
 
+import getCurrencyProvider
 import getPaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.core.services.BillingService
@@ -33,10 +34,12 @@ fun main() {
     val dbFile: File = File.createTempFile("antaeus-db", ".sqlite")
     // Connect to the database and create the needed tables. Drop any existing data.
     val db = Database
-        .connect(url = "jdbc:sqlite:${dbFile.absolutePath}",
+        .connect(
+            url = "jdbc:sqlite:${dbFile.absolutePath}",
             driver = "org.sqlite.JDBC",
             user = "root",
-            password = "")
+            password = ""
+        )
         .also {
             TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
             transaction(it) {
@@ -56,6 +59,7 @@ fun main() {
 
     // Get third parties
     val paymentProvider = getPaymentProvider()
+    val currencyProvider = getCurrencyProvider()
 
     // Create scheduler
     val scheduler = Scheduler()
@@ -63,7 +67,15 @@ fun main() {
     // Create core services
     val invoiceService = InvoiceService(dal = dal)
     val customerService = CustomerService(dal = dal)
-    val billingService = BillingService(paymentProvider = paymentProvider, invoiceService = invoiceService, scheduler = scheduler)
+    val billingService =
+        BillingService(
+            paymentProvider = paymentProvider,
+            currencyProvider = currencyProvider,
+            invoiceService = invoiceService,
+            customerService = customerService,
+            scheduler = scheduler
+        )
+
     // Start automatic billing
     billingService.startAutomaticBilling()
 
