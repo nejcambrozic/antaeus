@@ -5,6 +5,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
+import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.models.*
@@ -93,5 +94,23 @@ class BillingServiceTest {
     fun `will call transition invoice to processing and charge`() {
         billingService.processInvoice(INVOICE_PENDING)
         verify { paymentProvider.charge(INVOICE_PROCESSING) }
+    }
+
+    @Test
+    fun `will retry processing invoice processInvoiceRetryCount-times before quiting on network error`() {
+        every { paymentProvider.charge(any()) } throws NetworkException()
+        billingService.processInvoice(INVOICE_PENDING)
+
+        verify(exactly = billingService.processInvoiceRetryCount) { paymentProvider.charge(any()) }
+
+    }
+
+    @Test
+    fun `will return failed invoice payment on network error`() {
+        every { paymentProvider.charge(any()) } throws NetworkException()
+        val invoicePayment = billingService.processInvoice(INVOICE_PENDING)
+
+        Assertions.assertFalse(invoicePayment.charged)
+        Assertions.assertEquals(InvoiceStatus.FAILED, invoicePayment.invoice.status)
     }
 }

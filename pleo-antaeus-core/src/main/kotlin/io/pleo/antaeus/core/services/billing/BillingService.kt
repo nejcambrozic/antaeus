@@ -9,8 +9,11 @@ import io.pleo.antaeus.core.scheduler.Scheduler
 import io.pleo.antaeus.core.services.billing.InvoicePaymentAction
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 import java.time.LocalDateTime
+import kotlin.random.Random
 
 private val logger = KotlinLogging.logger {}
 
@@ -20,6 +23,9 @@ class BillingService(
     private val invoiceService: InvoiceService,
     private val scheduler: Scheduler
 ) {
+
+    val processInvoiceRetryCount = 3
+
 
     fun startAutomaticBilling() {
         val now = LocalDateTime.now()
@@ -48,7 +54,13 @@ class BillingService(
         return processInvoice(invoice)
     }
 
-    fun processInvoice(invoice: Invoice): InvoicePaymentAction {
+    fun processInvoice(invoice: Invoice, attempt: Int = 0): InvoicePaymentAction {
+
+        // End trying to process invoice after 3 attempts
+        if (attempt >= processInvoiceRetryCount) {
+            return InvoicePaymentAction(invoiceService.markFailed(invoice.id), false)
+        }
+
         return try {
             val processedInvoice = chargeInvoice(verifyInvoiceStatus(invoice))
             InvoicePaymentAction(processedInvoice, processedInvoice.status == InvoiceStatus.PAID)
@@ -58,7 +70,10 @@ class BillingService(
         } catch (cme: CurrencyMismatchException) {
             TODO()
         } catch (ne: NetworkException) {
-            TODO()
+            logger.warn(ne) { "Network error while processing invoice '${invoice.id}'"}
+            runBlocking {
+                retryPaymentAttempt(invoice, attempt)
+            }
         }
     }
 
@@ -78,5 +93,10 @@ class BillingService(
         }
         logger.info { "Charge failed for invoice: '${invoice.id}'" }
         return invoiceService.markFailed(invoice.id)
+    }
+
+    private suspend fun retryPaymentAttempt(invoice: Invoice, attempt: Int = 0): InvoicePaymentAction {
+        delay(Random.nextLong(1000, 2000))
+        return processInvoice(invoice, attempt + 1)
     }
 }
