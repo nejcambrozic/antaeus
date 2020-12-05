@@ -9,14 +9,14 @@ package io.pleo.antaeus.app
 
 import getCurrencyProvider
 import getPaymentProvider
+import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
-import io.pleo.antaeus.core.services.BillingService
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
+import io.pleo.antaeus.core.services.billing.BillingService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
-import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.rest.AntaeusRest
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils

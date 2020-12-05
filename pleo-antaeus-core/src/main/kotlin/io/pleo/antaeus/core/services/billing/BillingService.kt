@@ -1,4 +1,4 @@
-package io.pleo.antaeus.core.services
+package io.pleo.antaeus.core.services.billing
 
 import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
@@ -8,7 +8,8 @@ import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.CurrencyProvider
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
-import io.pleo.antaeus.core.services.billing.InvoicePaymentAction
+import io.pleo.antaeus.core.services.CustomerService
+import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import kotlinx.coroutines.delay
@@ -33,6 +34,7 @@ class BillingService(
     private val networkTimeoutOnError = environmentProvider.getEnvVariable("NETWORK_TIMEOUT_ON_ERROR_SECONDS").toLong()
 
     fun startAutomaticBilling() {
+        logger.info { "Starting automatic billing, scheduling dailyBillingCheck" }
         val now = LocalDateTime.now()
         val firstOfNextMonth = now
             .plusMonths(1)
@@ -43,6 +45,7 @@ class BillingService(
     }
 
     private val dailyBillingCheck: () -> Unit = {
+        logger.info { "Daily billing check" }
         val now = LocalDateTime.now()
         // process invoices only if today is 1st day of the month
         if (now.dayOfMonth == 1) {
@@ -70,23 +73,22 @@ class BillingService(
     }
 
     fun processInvoice(invoice: Invoice, attempt: Int = 0): InvoicePaymentAction {
-
-        // End trying to process invoice after 3 attempts
         if (attempt >= processInvoiceRetryCount) {
+            logger.warn { "Invoice processing attempt limit reached for invoice '${invoice.id}'" }
             return InvoicePaymentAction(invoiceService.markFailed(invoice.id), false)
         }
 
         return try {
             val processedInvoice = chargeInvoice(verifyInvoiceStatus(invoice))
             InvoicePaymentAction(processedInvoice, processedInvoice.status == InvoiceStatus.PAID)
-
         } catch (cnfe: CustomerNotFoundException) {
+            logger.warn(cnfe) { "Customer '${invoice.customerId}' not found" }
             InvoicePaymentAction(invoiceService.markFailed(invoice.id), false)
         } catch (cme: CurrencyMismatchException) {
+            logger.warn(cme) { "Currency does not match for invoice '${invoice.id}'. Trying currency conversion..." }
             processInvoice(convertInvoiceCurrency(invoice), attempt + 1)
-
         } catch (ne: NetworkException) {
-            logger.warn(ne) { "Network error while processing invoice '${invoice.id}'" }
+            logger.warn(ne) { "Network error while processing invoice '${invoice.id}'. Retrying..." }
             runBlocking {
                 retryPaymentAttempt(invoice, attempt)
             }
@@ -113,6 +115,7 @@ class BillingService(
 
     private fun convertInvoiceCurrency(invoice: Invoice, attempt: Int = 0): Invoice {
         if (attempt >= processInvoiceRetryCount) {
+            logger.warn { "Currency conversion attempt limit reached for invoice '${invoice.id}'" }
             return invoice
         }
 
@@ -121,6 +124,7 @@ class BillingService(
             val convertedAmount = currencyProvider.convert(invoice.amount, customer.currency)
             invoice.copy(amount = convertedAmount)
         } catch (ne: NetworkException) {
+            logger.warn(ne) { "Network error while converting currency for invoice '${invoice.id}'. Retrying..." }
             runBlocking {
                 retryCurrencyConvert(invoice, attempt)
             }

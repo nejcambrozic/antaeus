@@ -1,4 +1,4 @@
-package io.pleo.antaeus.core.services
+package io.pleo.antaeus.core.services.billing
 
 import io.mockk.every
 import io.mockk.mockk
@@ -12,6 +12,8 @@ import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.CurrencyProvider
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.scheduler.Scheduler
+import io.pleo.antaeus.core.services.CustomerService
+import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.models.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test

@@ -8,9 +8,10 @@ import io.javalin.Javalin
 import io.javalin.apibuilder.ApiBuilder.*
 import io.pleo.antaeus.core.exceptions.EntityNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
-import io.pleo.antaeus.core.services.BillingService
+
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
+import io.pleo.antaeus.core.services.billing.BillingService
 import mu.KotlinLogging
 
 private val logger = KotlinLogging.logger {}
