@@ -10,21 +10,19 @@ class Scheduler(corePoolSize: Int = 1) {
     private val executor: ScheduledThreadPoolExecutor = ScheduledThreadPoolExecutor(corePoolSize)
     private var scheduledJob: ScheduledFuture<*>? = null
 
-    fun scheduleJob(job: () -> Unit, scheduledAt: LocalDateTime) {
+    fun scheduleJob(job: () -> Unit, scheduledAt: LocalDateTime, period: Long = 24, unit: TimeUnit = TimeUnit.HOURS) {
         val now = LocalDateTime.now()
 
         val delay = Duration.between(
             now,
             scheduledAt
-        ).toSeconds()
+        ).toHours()
 
-        // Schedule at fixed rate of 60 seconds for testing purposes
-        // TODO schedule for each 1st of the Month
         scheduledJob = executor.scheduleAtFixedRate(
             job,
             delay,
-            60,
-            TimeUnit.SECONDS
+            period,
+            unit
         )
     }
 }

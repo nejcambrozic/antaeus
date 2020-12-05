@@ -28,17 +28,25 @@ class BillingService(
 ) {
 
     val processInvoiceRetryCount = 3
-
-
     fun startAutomaticBilling() {
         val now = LocalDateTime.now()
-        // Schedule for next minute for testing purposes
-        // TODO: schedule for 1st of month
-        val scheduledAt = now.plusMinutes(1)
-        scheduler.scheduleJob(processInvoices, scheduledAt)
+        val firstOfNextMonth = now
+            .plusMonths(1)
+            .withDayOfMonth(1)
+            .withHour(0)
+            .withMinute(1)
+        scheduler.scheduleJob(dailyBillingCheck, firstOfNextMonth)
     }
 
-    private val processInvoices: () -> Unit = {
+    private val dailyBillingCheck: () -> Unit = {
+        val now = LocalDateTime.now()
+        // process invoices only if today is 1st day of the month
+        if (now.dayOfMonth == 1) {
+            processInvoices()
+        }
+    }
+
+    private fun processInvoices() {
         logger.info { "Starting to process invoices..." }
         val start = System.currentTimeMillis()
 
