@@ -1,5 +1,6 @@
 package io.pleo.antaeus.core.services
 
+import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
@@ -14,7 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 import java.time.LocalDateTime
-import kotlin.random.Random
 
 private val logger = KotlinLogging.logger {}
 
@@ -24,10 +24,14 @@ class BillingService(
     private val currencyProvider: CurrencyProvider,
     private val invoiceService: InvoiceService,
     private val customerService: CustomerService,
-    private val scheduler: Scheduler
+    private val scheduler: Scheduler,
+    environmentProvider: EnvironmentProvider
 ) {
 
-    val processInvoiceRetryCount = 3
+    private val processInvoiceRetryCount = environmentProvider.getEnvVariable("PROCESS_INVOICE_RETRY_COUNT")
+        .toInt()
+    private val networkTimeoutOnError = environmentProvider.getEnvVariable("NETWORK_TIMEOUT_ON_ERROR_SECONDS").toLong()
+
     fun startAutomaticBilling() {
         val now = LocalDateTime.now()
         val firstOfNextMonth = now
@@ -124,12 +128,12 @@ class BillingService(
     }
 
     private suspend fun retryCurrencyConvert(invoice: Invoice, attempt: Int = 0): Invoice {
-        delay(Random.nextLong(1000, 2000))
+        delay(networkTimeoutOnError)
         return convertInvoiceCurrency(invoice, attempt + 1)
     }
 
     private suspend fun retryPaymentAttempt(invoice: Invoice, attempt: Int = 0): InvoicePaymentAction {
-        delay(Random.nextLong(1000, 2000))
+        delay(networkTimeoutOnError)
         return processInvoice(invoice, attempt + 1)
     }
 }

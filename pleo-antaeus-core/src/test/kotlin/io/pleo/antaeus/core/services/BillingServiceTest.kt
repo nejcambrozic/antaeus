@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InvoiceNotPendingException
@@ -65,6 +66,11 @@ class BillingServiceTest {
         every { fetch(2) } returns CUSTOMER_DKK
     }
 
+    private val environmentProvider = mockk<EnvironmentProvider> {
+        every { getEnvVariable("PROCESS_INVOICE_RETRY_COUNT") } returns "3"
+        every { getEnvVariable("NETWORK_TIMEOUT_ON_ERROR_SECONDS") } returns "0"
+    }
+
     private val scheduler = mockk<Scheduler> { }
 
 
@@ -73,6 +79,7 @@ class BillingServiceTest {
         currencyProvider = currencyProvider,
         invoiceService = invoiceService,
         customerService = customerService,
+        environmentProvider = environmentProvider,
         scheduler = scheduler
     )
 
@@ -130,7 +137,7 @@ class BillingServiceTest {
         every { paymentProvider.charge(any()) } throws NetworkException()
         billingService.processInvoice(INVOICE_PENDING)
 
-        verify(exactly = billingService.processInvoiceRetryCount) { paymentProvider.charge(any()) }
+        verify(exactly = 3) { paymentProvider.charge(any()) }
 
     }
 
@@ -186,9 +193,9 @@ class BillingServiceTest {
         every { currencyProvider.convert(any(), any()) } throws NetworkException()
         billingService.processInvoice(INVOICE_CURRENCY_MISMATCH)
 
-        val totalExpectedConvertCalls =
-            billingService.processInvoiceRetryCount * billingService.processInvoiceRetryCount
-        verify(exactly = billingService.processInvoiceRetryCount) { paymentProvider.charge(any()) }
+        val totalExpectedConvertCalls = 9
+
+        verify(exactly = 3) { paymentProvider.charge(any()) }
         verify(exactly = totalExpectedConvertCalls) { currencyProvider.convert(any(), any()) }
         // Each top-level invoiceProcessing attempt includes the same amount of convertCurrency attempts for each
         verifyOrder {

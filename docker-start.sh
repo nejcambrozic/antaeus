@@ -12,4 +12,6 @@ docker run \
   --interactive \
   --tty \
   --volume pleo-antaeus-build-cache:/root/.gradle \
+  -e PROCESS_INVOICE_RETRY_COUNT="3" \
+  -e NETWORK_TIMEOUT_ON_ERROR_SECONDS="5000" \
   pleo-antaeus

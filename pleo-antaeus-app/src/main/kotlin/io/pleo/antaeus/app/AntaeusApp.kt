@@ -16,6 +16,7 @@ import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
+import io.pleo.antaeus.core.environment.EnvironmentProvider
 import io.pleo.antaeus.rest.AntaeusRest
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -64,6 +65,9 @@ fun main() {
     // Create scheduler
     val scheduler = Scheduler()
 
+    // Create environment provider
+    val environmentProvider = EnvironmentProvider()
+
     // Create core services
     val invoiceService = InvoiceService(dal = dal)
     val customerService = CustomerService(dal = dal)
@@ -73,6 +77,7 @@ fun main() {
             currencyProvider = currencyProvider,
             invoiceService = invoiceService,
             customerService = customerService,
+            environmentProvider = environmentProvider,
             scheduler = scheduler
         )
 
